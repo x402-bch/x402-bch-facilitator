@@ -17,15 +17,23 @@ describe('#use-cases/facilitator.js', () => {
   let mockBchjs
   let mockLevelDB
   let mockUtxoDb
+  let mockAddressDb
 
   beforeEach(() => {
     sandbox = sinon.createSandbox()
     mockUtxoDb = {
       get: sandbox.stub(),
-      put: sandbox.stub().resolves()
+      put: sandbox.stub().resolves(),
+      del: sandbox.stub().resolves()
+    }
+    mockAddressDb = {
+      get: sandbox.stub(),
+      put: sandbox.stub().resolves(),
+      del: sandbox.stub().resolves()
     }
     mockLevelDB = {
-      utxoDb: mockUtxoDb
+      utxoDb: mockUtxoDb,
+      addressDb: mockAddressDb
     }
     mockBchjs = {
       BitcoinCash: {
@@ -128,7 +136,7 @@ describe('#use-cases/facilitator.js', () => {
 
       assert.isFalse(result.isValid)
       assert.equal(result.invalidReason, 'unexpected_utxo_validation_error')
-      assert.include(result.errorMessage, 'UTXO database not initialized')
+      assert.include(result.errorMessage, 'UTXO or address database not initialized')
     })
 
     it('should validate new UTXO and add to database with v1 minAmountRequired', async () => {
@@ -142,9 +150,10 @@ describe('#use-cases/facilitator.js', () => {
           }
         }
       }
-      const paymentRequirements = { minAmountRequired: 1000 }
+      const paymentRequirements = { minAmountRequired: 1000, payTo: 'bitcoincash:qptest' }
 
       mockUtxoDb.get.rejects(new Error('NotFound'))
+      mockAddressDb.get.rejects(new Error('NotFound')) // Address not in addressDb yet
       mockBchWallet.validateUtxo.resolves({
         isValid: true,
         utxoAmountSat: 2000,
@@ -157,6 +166,7 @@ describe('#use-cases/facilitator.js', () => {
       assert.property(result, 'remainingBalanceSat')
       assert.property(result, 'utxoInfo')
       assert.isTrue(mockUtxoDb.put.calledOnce)
+      assert.isTrue(mockAddressDb.put.calledOnce) // Should also add to addressDb
     })
 
     it('should validate new UTXO and add to database with v2 amount field', async () => {
@@ -170,9 +180,10 @@ describe('#use-cases/facilitator.js', () => {
           }
         }
       }
-      const paymentRequirements = { amount: '1000' }
+      const paymentRequirements = { amount: '1000', payTo: 'bitcoincash:qptest' }
 
       mockUtxoDb.get.rejects(new Error('NotFound'))
+      mockAddressDb.get.rejects(new Error('NotFound')) // Address not in addressDb yet
       mockBchWallet.validateUtxo.resolves({
         isValid: true,
         utxoAmountSat: 2000,
@@ -185,6 +196,7 @@ describe('#use-cases/facilitator.js', () => {
       assert.property(result, 'remainingBalanceSat')
       assert.property(result, 'utxoInfo')
       assert.isTrue(mockUtxoDb.put.calledOnce)
+      assert.isTrue(mockAddressDb.put.calledOnce) // Should also add to addressDb
     })
 
     it('should return invalid when UTXO balance is insufficient', async () => {
@@ -198,7 +210,7 @@ describe('#use-cases/facilitator.js', () => {
           }
         }
       }
-      const paymentRequirements = { minAmountRequired: 3000 }
+      const paymentRequirements = { minAmountRequired: 3000, payTo: 'bitcoincash:qptest' }
 
       mockUtxoDb.get.rejects(new Error('NotFound'))
       mockBchWallet.validateUtxo.resolves({
@@ -224,24 +236,27 @@ describe('#use-cases/facilitator.js', () => {
           }
         }
       }
-      const paymentRequirements = { minAmountRequired: 500 }
+      const paymentRequirements = { minAmountRequired: 500, payTo: 'bitcoincash:qptest' }
 
       const existingUtxo = {
         utxoId: 'tx123:0',
         txid: 'tx123',
         vout: 0,
         payerAddress: 'bitcoincash:qptest',
+        receiverAddress: 'bitcoincash:qptest',
         remainingBalanceSat: '1500',
         totalDebitedSat: '500'
       }
 
       mockUtxoDb.get.resolves(existingUtxo)
+      mockAddressDb.get.resolves([existingUtxo]) // AddressDb has the UTXO
 
       const result = await useCase.validateUtxo({ paymentPayload, paymentRequirements })
 
       assert.isTrue(result.isValid)
       assert.equal(result.remainingBalanceSat, '1000')
       assert.isTrue(mockUtxoDb.put.calledOnce)
+      assert.isTrue(mockAddressDb.put.calledOnce) // Should also update addressDb
     })
 
     it('should return invalid when existing UTXO has insufficient balance', async () => {
@@ -255,18 +270,20 @@ describe('#use-cases/facilitator.js', () => {
           }
         }
       }
-      const paymentRequirements = { minAmountRequired: 2000 }
+      const paymentRequirements = { minAmountRequired: 2000, payTo: 'bitcoincash:qptest' }
 
       const existingUtxo = {
         utxoId: 'tx123:0',
         txid: 'tx123',
         vout: 0,
         payerAddress: 'bitcoincash:qptest',
+        receiverAddress: 'bitcoincash:qptest',
         remainingBalanceSat: '1000',
         totalDebitedSat: '1000'
       }
 
       mockUtxoDb.get.resolves(existingUtxo)
+      mockAddressDb.get.resolves([existingUtxo]) // AddressDb has the UTXO
 
       const result = await useCase.validateUtxo({ paymentPayload, paymentRequirements })
 
@@ -387,10 +404,11 @@ describe('#use-cases/facilitator.js', () => {
 
       mockBchjs.BitcoinCash.verifyMessage.returns(true)
       mockUtxoDb.get.rejects(new Error('NotFound'))
+      mockAddressDb.get.rejects(new Error('NotFound')) // Address not in addressDb yet
       mockBchWallet.validateUtxo.resolves({
         isValid: true,
         utxoAmountSat: 2000,
-        receiverAddress: 'bitcoincash:qptest'
+        receiverAddress: 'bitcoincash:qprecv'
       })
 
       const result = await useCase.verifyPayment(paymentPayload, paymentRequirements)
@@ -408,10 +426,11 @@ describe('#use-cases/facilitator.js', () => {
 
       mockBchjs.BitcoinCash.verifyMessage.returns(true)
       mockUtxoDb.get.rejects(new Error('NotFound'))
+      mockAddressDb.get.rejects(new Error('NotFound')) // Address not in addressDb yet
       mockBchWallet.validateUtxo.resolves({
         isValid: true,
         utxoAmountSat: 2000,
-        receiverAddress: 'bitcoincash:qptest'
+        receiverAddress: 'bitcoincash:qprecv'
       })
 
       const result = await useCase.verifyPayment(paymentPayload, paymentRequirements)
@@ -429,10 +448,11 @@ describe('#use-cases/facilitator.js', () => {
 
       mockBchjs.BitcoinCash.verifyMessage.returns(true)
       mockUtxoDb.get.rejects(new Error('NotFound'))
+      mockAddressDb.get.rejects(new Error('NotFound')) // Address not in addressDb yet
       mockBchWallet.validateUtxo.resolves({
         isValid: true,
         utxoAmountSat: 2000,
-        receiverAddress: 'bitcoincash:qptest'
+        receiverAddress: 'bitcoincash:qprecv'
       })
 
       const result = await useCase.verifyPayment(paymentPayload, paymentRequirements)
@@ -529,10 +549,11 @@ describe('#use-cases/facilitator.js', () => {
 
       mockBchjs.BitcoinCash.verifyMessage.returns(true)
       mockUtxoDb.get.rejects(new Error('NotFound'))
+      mockAddressDb.get.rejects(new Error('NotFound')) // Address not in addressDb yet
       mockBchWallet.validateUtxo.resolves({
         isValid: true,
         utxoAmountSat: 2000,
-        receiverAddress: 'bitcoincash:qptest'
+        receiverAddress: 'bitcoincash:qprecv'
       })
 
       const result = await useCase.settlePayment(paymentPayload, paymentRequirements)
@@ -550,10 +571,11 @@ describe('#use-cases/facilitator.js', () => {
 
       mockBchjs.BitcoinCash.verifyMessage.returns(true)
       mockUtxoDb.get.rejects(new Error('NotFound'))
+      mockAddressDb.get.rejects(new Error('NotFound')) // Address not in addressDb yet
       mockBchWallet.validateUtxo.resolves({
         isValid: true,
         utxoAmountSat: 2000,
-        receiverAddress: 'bitcoincash:qptest'
+        receiverAddress: 'bitcoincash:qprecv'
       })
 
       const result = await useCase.settlePayment(paymentPayload, paymentRequirements)
@@ -571,10 +593,11 @@ describe('#use-cases/facilitator.js', () => {
 
       mockBchjs.BitcoinCash.verifyMessage.returns(true)
       mockUtxoDb.get.rejects(new Error('NotFound'))
+      mockAddressDb.get.rejects(new Error('NotFound')) // Address not in addressDb yet
       mockBchWallet.validateUtxo.resolves({
         isValid: true,
         utxoAmountSat: 2000,
-        receiverAddress: 'bitcoincash:qptest'
+        receiverAddress: 'bitcoincash:qprecv'
       })
       mockBchWallet.getWallet().send.rejects(new Error('Send failed'))
 

@@ -186,7 +186,6 @@ class FacilitatorUseCase {
       const { authorization } = paymentPayload.payload
       const { txid, vout } = authorization
       const payerAddress = authorization.from
-      const payTo = paymentRequirements.payTo
 
       // Handle "check my tab" mode - use selected UTXO if provided
       let actualTxid = txid
