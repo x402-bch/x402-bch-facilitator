@@ -14,7 +14,8 @@ class BCHWalletAdapter {
     // Encapsulate dependencies
     this.msWallet = new MinimalBCHWallet(undefined, {
       interface: config.apiType,
-      restURL: config.bchServerUrl
+      restURL: config.bchServerUrl,
+      bearerToken: config.bearerToken
     })
     this.bchjs = this.msWallet.bchjs
     this.config = config

@@ -34,5 +34,7 @@ export default {
   // consumer-api = ipfs-bch-wallet-service, rest-api = bch-api
   apiType: process.env.API_TYPE || 'consumer-api',
   // Free API servers here: https://consumers.psfoundation.info/consumers.json
-  bchServerUrl: process.env.BCH_SERVER_URL || 'http://free-bch.fullstack.cash'
+  bchServerUrl: process.env.BCH_SERVER_URL || 'http://free-bch.fullstack.cash',
+  // Bearer token for the BCH infrastructure
+  bearerToken: process.env.BEARER_TOKEN || ''
 }
